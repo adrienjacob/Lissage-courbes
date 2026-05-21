@@ -82,7 +82,7 @@ fig.update_layout(
     margin=dict(t=40),
 )
 
-st.caption("Cliquez sur un point rouge pour le modifier directement.")
+# st.caption("Cliquez sur un point rouge pour le modifier directement.")
 event = st.plotly_chart(
     fig,
     on_select="rerun",
