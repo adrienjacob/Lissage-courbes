@@ -81,34 +81,61 @@ buf = io.BytesIO()
 with pd.ExcelWriter(buf, engine="openpyxl") as writer:
     result_df.to_excel(writer, index=False, sheet_name="PCHIP")
 csv_text = result_df.to_csv(index=False, sep=";", decimal=",")
+# Tabulations + virgule decimale pour coller directement dans Excel francais
+tsv_text = result_df.to_csv(index=False, sep="\t", decimal=",")
 
 col1, col2, col3 = st.columns(3)
 col1.download_button(
-    label="⬇ Télécharger Excel",
+    label="⬇ Telecharger Excel",
     data=buf.getvalue(),
     file_name="trajectoire_pchip.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 )
 col2.download_button(
-    label="⬇ Télécharger CSV",
+    label="⬇ Telecharger CSV",
     data=csv_text,
     file_name="trajectoire_pchip.csv",
     mime="text/csv",
 )
 with col3:
     st.components.v1.html(
-        f"""
-        <button id="copybtn"
-          onclick="navigator.clipboard.writeText({json.dumps(csv_text)})
-            .then(()=>{{
-              const b=document.getElementById('copybtn');
-              b.textContent='✓ Copié !';
-              setTimeout(()=>b.textContent='📋 Copier les valeurs',2000);
-            }})"
-          style="width:100%;height:38px;cursor:pointer;font-size:0.875rem;
-                 font-family:sans-serif;border-radius:0.5rem;
-                 border:1px solid rgba(49,51,63,0.2);background:white;color:#31333f">
-          📋 Copier les valeurs
-        </button>""",
-        height=45,
+        f"""<style>
+        *{{margin:0;padding:0;box-sizing:border-box}}
+        html,body{{background:transparent}}
+        button{{
+            width:100%;height:38px;cursor:pointer;
+            display:inline-flex;align-items:center;justify-content:center;
+            font-size:1rem;font-weight:400;line-height:1.6;
+            font-family:"Source Sans Pro",sans-serif;
+            border-radius:0.5rem;border:1px solid rgba(49,51,63,0.2);
+            background:white;color:rgb(49,51,63);transition:border-color .15s;
+        }}
+        button:hover{{border-color:currentColor}}
+        button:active{{opacity:.8}}
+        </style>
+        <script>
+        window.addEventListener('load',function(){{
+            try{{
+                var cs=window.parent.getComputedStyle(window.parent.document.documentElement);
+                var bg=cs.getPropertyValue('--background-color').trim();
+                var fg=cs.getPropertyValue('--text-color').trim();
+                var btn=document.getElementById('cb');
+                if(bg){{document.body.style.background=bg;btn.style.background=bg;}}
+                if(fg){{
+                    btn.style.color=fg;
+                    btn.style.borderColor=fg.replace('rgb(','rgba(').replace(')',',.2)');
+                }}
+            }}catch(e){{}}
+        }});
+        function doCopy(){{
+            var b=document.getElementById('cb');
+            navigator.clipboard.writeText({json.dumps(tsv_text)})
+                .then(function(){{
+                    b.textContent='✓ Copie !';
+                    setTimeout(function(){{b.textContent='\U0001f4cb Copier les valeurs';}},2000);
+                }});
+        }}
+        </script>
+        <button id="cb" onclick="doCopy()">\U0001f4cb Copier les valeurs</button>""",
+        height=42,
     )
