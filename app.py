@@ -24,7 +24,7 @@ edited = st.data_editor(
         ),
         "Valeur": st.column_config.NumberColumn(format="%.4f"),
     },
-    width="stretch",
+    use_container_width=True,
 )
 
 points = edited.dropna().copy()
@@ -42,16 +42,23 @@ years_all = np.arange(int(years_known.min()), int(years_known.max()) + 1, dtype=
 pchip = PchipInterpolator(years_known, values_known)
 values_pchip = np.round(pchip(years_all), 4)
 
+hover_pchip = [f"{v:.4f}".replace(".", ",") for v in values_pchip]
+hover_pts = [f"{v:.4f}".replace(".", ",") for v in values_known]
+
 fig = go.Figure()
 fig.add_trace(go.Scatter(
     x=years_all, y=values_pchip,
     mode="lines", name="PCHIP",
     line=dict(color="#1f77b4", width=2),
+    text=hover_pchip,
+    hovertemplate="%{x|d} : %{text}<extra></extra>",
 ))
 fig.add_trace(go.Scatter(
     x=years_known, y=values_known,
     mode="markers", name="Points de passage",
     marker=dict(color="crimson", size=9, symbol="circle"),
+    text=hover_pts,
+    hovertemplate="%{x|d} : %{text}<extra></extra>",
 ))
 fig.update_layout(
     xaxis_title="Année",
@@ -60,12 +67,14 @@ fig.update_layout(
     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
     margin=dict(t=40),
 )
-st.plotly_chart(fig, width="stretch")
+st.plotly_chart(fig, use_container_width=True)
 
 result_df = pd.DataFrame({"Année": years_all.astype(int), "PCHIP": values_pchip})
+result_display = result_df.copy()
+result_display["PCHIP"] = result_display["PCHIP"].apply(lambda v: f"{v:.4f}".replace(".", ","))
 
 st.subheader("Valeurs interpolées")
-st.dataframe(result_df, width="stretch", hide_index=True, height=300)
+st.dataframe(result_display, use_container_width=True, hide_index=True, height=300)
 
 buf = io.BytesIO()
 with pd.ExcelWriter(buf, engine="openpyxl") as writer:
@@ -83,3 +92,5 @@ col2.download_button(
     file_name="trajectoire_pchip.csv",
     mime="text/csv",
 )
+
+# TD : bouton copier valeurs dans presse-papier
