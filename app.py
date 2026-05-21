@@ -1,4 +1,5 @@
 import io
+import json
 
 import numpy as np
 import pandas as pd
@@ -9,21 +10,14 @@ from scipy.interpolate import PchipInterpolator
 st.set_page_config(page_title="Lissage PCHIP", page_icon="📈", layout="centered")
 st.title("Lissage de trajectoire — PCHIP")
 
-_default = pd.DataFrame({
+default_points = pd.DataFrame({
     "Année": [2020, 2025, 2030, 2040, 2050],
     "Valeur": [100.0, 85.0, 70.0, 40.0, 0.0],
 })
 
-if "waypoints" not in st.session_state:
-    st.session_state.waypoints = _default.copy()
-if "sel_pt" not in st.session_state:
-    st.session_state.sel_pt = None
-if "chart_ver" not in st.session_state:
-    st.session_state.chart_ver = 0
-
 st.subheader("Points de passage")
 edited = st.data_editor(
-    st.session_state.waypoints,
+    default_points,
     num_rows="dynamic",
     column_config={
         "Année": st.column_config.NumberColumn(
@@ -33,7 +27,6 @@ edited = st.data_editor(
     },
     use_container_width=True,
 )
-st.session_state.waypoints = edited
 
 points = edited.dropna().copy()
 points["Année"] = points["Année"].astype(int)
@@ -50,13 +43,8 @@ years_all = np.arange(int(years_known.min()), int(years_known.max()) + 1, dtype=
 pchip = PchipInterpolator(years_known, values_known)
 values_pchip = np.round(pchip(years_all), 4)
 
-sel = st.session_state.sel_pt
-
 hover_pchip = [f"{v:.4f}".replace(".", ",") for v in values_pchip]
 hover_pts = [f"{v:.4f}".replace(".", ",") for v in values_known]
-
-marker_colors = ["gold" if i == sel else "crimson" for i in range(len(years_known))]
-marker_sizes = [13 if i == sel else 9 for i in range(len(years_known))]
 
 fig = go.Figure()
 fig.add_trace(go.Scatter(
@@ -69,7 +57,7 @@ fig.add_trace(go.Scatter(
 fig.add_trace(go.Scatter(
     x=years_known, y=values_known,
     mode="markers", name="Points de passage",
-    marker=dict(color=marker_colors, size=marker_sizes, symbol="circle"),
+    marker=dict(color="crimson", size=9, symbol="circle"),
     text=hover_pts,
     hovertemplate="%{x|d} : %{text}<extra></extra>",
 ))
@@ -77,61 +65,10 @@ fig.update_layout(
     xaxis_title="Année",
     yaxis_title="Valeur",
     hovermode="x unified",
-    clickmode="event+select",
     legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
     margin=dict(t=40),
 )
-
-# st.caption("Cliquez sur un point rouge pour le modifier directement.")
-event = st.plotly_chart(
-    fig,
-    on_select="rerun",
-    selection_mode="points",
-    key=f"chart_{st.session_state.chart_ver}",
-    use_container_width=True,
-)
-
-# Handle chart click → select waypoint
-try:
-    sel_pts = event["selection"]["points"]
-except (KeyError, TypeError, AttributeError):
-    sel_pts = []
-
-if sel_pts:
-    curve1_pts = [pt for pt in sel_pts if pt.get("curve_number") == 1]
-    new_sel = curve1_pts[0]["point_index"] if curve1_pts else None
-    if new_sel != st.session_state.sel_pt:
-        st.session_state.sel_pt = new_sel
-        st.rerun()
-
-# Edit panel for selected waypoint
-if sel is not None and sel < len(points):
-    year_val = int(points.iloc[sel]["Année"])
-    valeur_val = float(points.iloc[sel]["Valeur"])
-    with st.container(border=True):
-        st.markdown(f"**Modifier le point {year_val}**")
-        c1, c2 = st.columns(2)
-        new_year = c1.number_input(
-            "Année", value=year_val, step=1, min_value=1900, max_value=2200, key="edit_year"
-        )
-        new_val = c2.number_input(
-            "Valeur", value=valeur_val, format="%.4f", key="edit_val"
-        )
-        b1, b2 = st.columns(2)
-        if b1.button("✓ Appliquer", use_container_width=True, type="primary"):
-            df = st.session_state.waypoints.copy()
-            mask = df["Année"] == year_val
-            if mask.any():
-                df.loc[mask, "Année"] = int(new_year)
-                df.loc[mask, "Valeur"] = new_val
-            st.session_state.waypoints = df
-            st.session_state.sel_pt = None
-            st.session_state.chart_ver += 1
-            st.rerun()
-        if b2.button("✕ Annuler", use_container_width=True):
-            st.session_state.sel_pt = None
-            st.session_state.chart_ver += 1
-            st.rerun()
+st.plotly_chart(fig, use_container_width=True)
 
 result_df = pd.DataFrame({"Année": years_all.astype(int), "PCHIP": values_pchip})
 result_display = result_df.copy()
@@ -143,7 +80,9 @@ st.dataframe(result_display, use_container_width=True, hide_index=True, height=3
 buf = io.BytesIO()
 with pd.ExcelWriter(buf, engine="openpyxl") as writer:
     result_df.to_excel(writer, index=False, sheet_name="PCHIP")
-col1, col2 = st.columns(2)
+csv_text = result_df.to_csv(index=False, sep=";", decimal=",")
+
+col1, col2, col3 = st.columns(3)
 col1.download_button(
     label="⬇ Télécharger Excel",
     data=buf.getvalue(),
@@ -152,9 +91,24 @@ col1.download_button(
 )
 col2.download_button(
     label="⬇ Télécharger CSV",
-    data=result_df.to_csv(index=False, sep=";", decimal=","),
+    data=csv_text,
     file_name="trajectoire_pchip.csv",
     mime="text/csv",
 )
-
-# TD : bouton copier valeurs dans presse-papier
+with col3:
+    st.components.v1.html(
+        f"""
+        <button id="copybtn"
+          onclick="navigator.clipboard.writeText({json.dumps(csv_text)})
+            .then(()=>{{
+              const b=document.getElementById('copybtn');
+              b.textContent='✓ Copié !';
+              setTimeout(()=>b.textContent='📋 Copier les valeurs',2000);
+            }})"
+          style="width:100%;height:38px;cursor:pointer;font-size:0.875rem;
+                 font-family:sans-serif;border-radius:0.5rem;
+                 border:1px solid rgba(49,51,63,0.2);background:white;color:#31333f">
+          📋 Copier les valeurs
+        </button>""",
+        height=45,
+    )
