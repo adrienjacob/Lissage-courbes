@@ -82,7 +82,7 @@ with pd.ExcelWriter(buf, engine="openpyxl") as writer:
     result_df.to_excel(writer, index=False, sheet_name="PCHIP")
 csv_text = result_df.to_csv(index=False, sep=";", decimal=",")
 # Tabulations + virgule decimale pour coller directement dans Excel francais
-tsv_text = result_df.to_csv(index=False, sep="\t", decimal=",")
+tsv_text = "\t".join(f"{v:.4f}".replace(".", ",") for v in result_df["PCHIP"])
 
 col1, col2, col3 = st.columns(3)
 col1.download_button(
