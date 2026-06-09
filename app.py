@@ -8,7 +8,7 @@ import streamlit as st
 from scipy.interpolate import PchipInterpolator
 
 st.set_page_config(page_title="Lissage PCHIP", page_icon="📈", layout="centered")
-st.title("Lissage de trajectoire — PCHIP")
+st.title("Lissage de trajectoire - PCHIP")
 
 default_points = pd.DataFrame({
     "Année": [2020, 2025, 2030, 2040, 2050],
@@ -16,19 +16,25 @@ default_points = pd.DataFrame({
 })
 
 st.subheader("Points de passage")
+default_points_display = default_points.copy()
+default_points_display["Valeur"] = default_points_display["Valeur"].apply(lambda v: f"{v:.4f}".replace(".", ","))
+
 edited = st.data_editor(
-    default_points,
+    default_points_display,
     num_rows="dynamic",
     column_config={
         "Année": st.column_config.NumberColumn(
             min_value=1900, max_value=2200, step=1, format="%d"
         ),
-        "Valeur": st.column_config.NumberColumn(format="%.4f"),
+        "Valeur": st.column_config.TextColumn(),
     },
     use_container_width=True,
 )
 
 points = edited.dropna().copy()
+points["Valeur"] = points["Valeur"].astype(str).str.replace(",", ".", regex=False).str.strip()
+points = points[points["Valeur"].str.match(r"^-?\d*\.?\d+$")]
+points["Valeur"] = points["Valeur"].astype(float)
 points["Année"] = points["Année"].astype(int)
 points = points.sort_values("Année").drop_duplicates("Année").reset_index(drop=True)
 
