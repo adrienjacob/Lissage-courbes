@@ -10,10 +10,38 @@ from scipy.interpolate import PchipInterpolator
 st.set_page_config(page_title="Lissage PCHIP", page_icon="📈", layout="centered")
 st.title("Lissage de trajectoire - PCHIP")
 
-default_points = pd.DataFrame({
-    "Année": [2020, 2025, 2030, 2040, 2050],
-    "Valeur": [100.0, 85.0, 70.0, 40.0, 0.0],
-})
+def points_from_url():
+    """Décode les points de passage depuis l'URL (param ?p=annee,valeur;...)."""
+    raw = st.query_params.get("p")
+    if not raw:
+        return None
+    annees, valeurs = [], []
+    for pair in raw.split(";"):
+        if "," not in pair:
+            continue
+        a, v = pair.split(",", 1)
+        try:
+            annee, valeur = int(a), float(v)
+        except ValueError:
+            continue
+        annees.append(annee)
+        valeurs.append(valeur)
+    if not annees:
+        return None
+    return pd.DataFrame({"Année": annees, "Valeur": valeurs})
+
+
+def points_to_url(annees, valeurs):
+    """Encode les points de passage dans l'URL pour un lien permanent."""
+    return ";".join(f"{int(a)},{v:g}" for a, v in zip(annees, valeurs))
+
+
+default_points = points_from_url()
+if default_points is None:
+    default_points = pd.DataFrame({
+        "Année": [2020, 2025, 2030, 2040, 2050],
+        "Valeur": [100.0, 85.0, 70.0, 40.0, 0.0],
+    })
 
 st.subheader("Points de passage")
 default_points_display = default_points.copy()
@@ -41,6 +69,53 @@ points = points.sort_values("Année").drop_duplicates("Année").reset_index(drop
 if len(points) < 2:
     st.warning("Entrez au moins 2 points de passage.")
     st.stop()
+
+# Met l'URL a jour : elle devient le lien permanent des points de passage
+encoded = points_to_url(points["Année"].values, points["Valeur"].values)
+if st.query_params.get("p") != encoded:
+    st.query_params["p"] = encoded
+
+st.components.v1.html(
+    """<style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    html,body{background:transparent}
+    button{
+        width:100%;height:38px;cursor:pointer;
+        display:inline-flex;align-items:center;justify-content:center;
+        font-size:1rem;font-weight:400;line-height:1.6;
+        font-family:"Source Sans Pro",sans-serif;
+        border-radius:0.5rem;border:1px solid rgba(49,51,63,0.2);
+        background:white;color:rgb(49,51,63);transition:border-color .15s;
+    }
+    button:hover{border-color:currentColor}
+    button:active{opacity:.8}
+    </style>
+    <script>
+    window.addEventListener('load',function(){
+        try{
+            var cs=window.parent.getComputedStyle(window.parent.document.documentElement);
+            var bg=cs.getPropertyValue('--background-color').trim();
+            var fg=cs.getPropertyValue('--text-color').trim();
+            var btn=document.getElementById('lk');
+            if(bg){document.body.style.background=bg;btn.style.background=bg;}
+            if(fg){
+                btn.style.color=fg;
+                btn.style.borderColor=fg.replace('rgb(','rgba(').replace(')',',.2)');
+            }
+        }catch(e){}
+    });
+    function copyLink(){
+        var b=document.getElementById('lk');
+        navigator.clipboard.writeText(window.parent.location.href)
+            .then(function(){
+                b.textContent='✓ Lien copie !';
+                setTimeout(function(){b.textContent='\U0001f517 Copier le lien permanent';},2000);
+            });
+    }
+    </script>
+    <button id="lk" onclick="copyLink()">\U0001f517 Copier le lien permanent</button>""",
+    height=42,
+)
 
 years_known = points["Année"].values.astype(float)
 values_known = points["Valeur"].values.astype(float)
