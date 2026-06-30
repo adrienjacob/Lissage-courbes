@@ -78,11 +78,19 @@ if default_points is None:
     })
 
 st.subheader("Points de passage")
-default_points_display = default_points.copy()
-default_points_display["Valeur"] = default_points_display["Valeur"].apply(lambda v: f"{v:.4f}".replace(".", ","))
+
+# L'éditeur est amorcé une seule fois depuis l'URL puis devient la seule source
+# de vérité. Lui repasser des données dérivées de l'URL à chaque rerun ferait
+# perdre des éditions en cours pendant que le lien permanent se met à jour.
+if "points_seed" not in st.session_state:
+    seed = default_points.copy()
+    seed["Valeur"] = seed["Valeur"].apply(lambda v: f"{v:.4f}".replace(".", ","))
+    st.session_state["points_seed"] = seed
+    st.session_state.setdefault("note_input", default_note)
 
 edited = st.data_editor(
-    default_points_display,
+    st.session_state["points_seed"],
+    key="points_editor",
     num_rows="dynamic",
     column_config={
         "Année": st.column_config.NumberColumn(
@@ -95,7 +103,7 @@ edited = st.data_editor(
 
 note = st.text_area(
     "Note",
-    value=default_note,
+    key="note_input",
     help="Texte libre, inclus dans le lien permanent.",
 )
 
