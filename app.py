@@ -1,3 +1,4 @@
+import base64
 import io
 import json
 
@@ -8,7 +9,7 @@ import streamlit as st
 from scipy.interpolate import PchipInterpolator
 
 st.set_page_config(page_title="Lissage PCHIP", page_icon="📈", layout="centered")
-st.title("Lissage de trajectoire - PCHIP")
+st.title("Lissage de trajectoire PCHIP")
 
 def points_from_url():
     """Décode les points de passage depuis l'URL (param ?p=annee,valeur;...)."""
@@ -31,12 +32,45 @@ def points_from_url():
     return pd.DataFrame({"Année": annees, "Valeur": valeurs})
 
 
-def points_to_url(annees, valeurs):
-    """Encode les points de passage dans l'URL pour un lien permanent."""
-    return ";".join(f"{int(a)},{v:g}" for a, v in zip(annees, valeurs))
+def decode_state():
+    """Décode les points de passage et la note depuis l'URL (params ?d= et ?n=)."""
+    token = st.query_params.get("d")
+    if token:
+        try:
+            annees, valeurs = [], []
+            for pair in token.split("_"):
+                a, v = pair.split("~")
+                annees.append(int(a))
+                valeurs.append(float(v))
+            df = pd.DataFrame({"Année": annees, "Valeur": valeurs})
+            note = ""
+            raw_n = st.query_params.get("n")
+            if raw_n:
+                pad = "=" * (-len(raw_n) % 4)
+                note = base64.urlsafe_b64decode(raw_n + pad).decode("utf-8")
+            return (df if not df.empty else None), note
+        except Exception:
+            pass
+    # Rétrocompatibilité : ancien lien ?p=annee,valeur;...
+    return points_from_url(), ""
 
 
-default_points = points_from_url()
+def encode_state(annees, valeurs, texte):
+    """Encode points + note pour un lien permanent compact.
+
+    Points : `annee~valeur_annee~valeur` (caractères jamais percent-encodés).
+    Note   : base64url, courte même avec accents/espaces. Renvoie (points, note).
+    """
+    pts = "_".join(f"{int(a)}~{v:g}" for a, v in zip(annees, valeurs))
+    note = (
+        base64.urlsafe_b64encode(texte.encode("utf-8")).decode("ascii").rstrip("=")
+        if texte
+        else ""
+    )
+    return pts, note
+
+
+default_points, default_note = decode_state()
 if default_points is None:
     default_points = pd.DataFrame({
         "Année": [2020, 2025, 2030, 2040, 2050],
@@ -59,6 +93,12 @@ edited = st.data_editor(
     use_container_width=True,
 )
 
+note = st.text_area(
+    "Note",
+    value=default_note,
+    help="Texte libre, inclus dans le lien permanent.",
+)
+
 points = edited.dropna().copy()
 points["Valeur"] = points["Valeur"].astype(str).str.replace(",", ".", regex=False).str.strip()
 points = points[points["Valeur"].str.match(r"^-?\d*\.?\d+$")]
@@ -70,10 +110,17 @@ if len(points) < 2:
     st.warning("Entrez au moins 2 points de passage.")
     st.stop()
 
-# Met l'URL a jour : elle devient le lien permanent des points de passage
-encoded = points_to_url(points["Année"].values, points["Valeur"].values)
-if st.query_params.get("p") != encoded:
-    st.query_params["p"] = encoded
+# Met l'URL a jour : elle devient le lien permanent (points + note)
+pts_enc, note_enc = encode_state(points["Année"].values, points["Valeur"].values, note)
+if st.query_params.get("d") != pts_enc:
+    st.query_params["d"] = pts_enc
+if note_enc:
+    if st.query_params.get("n") != note_enc:
+        st.query_params["n"] = note_enc
+elif "n" in st.query_params:
+    del st.query_params["n"]
+if "p" in st.query_params:
+    del st.query_params["p"]
 
 st.components.v1.html(
     """<style>
